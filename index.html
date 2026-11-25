@@ -69,20 +69,21 @@ for(let i=0;i<[7,3,14][MAP];i++){const cx=6+rnd()*52|0,cz=18+rnd()*28|0;for(let 
 // bunkers & cover
 for(let i=0;i<[9,16,5][MAP];i++){const cx=5+rnd()*50|0,cz=19+rnd()*24|0;ring(cx,cz,cx+4,cz+4,2,4,i%2?2:3);box(cx+2,2,cz,cx+2,3,cz,0);box(cx+2,2,cz+4,cx+2,3,cz+4,0);if(i%3==0)box(cx,5,cz,cx+4,5,cz+4,3)}
 for(let i=0;i<8;i++){const cx=4+rnd()*50|0,cz=18+rnd()*26|0;box(cx,2,cz,cx+(rnd()<.5?6:1),3,cz+(rnd()<.5?1:6),2)}
+[[8,24],[52,24],[8,38],[52,38]].forEach(([cx,cz])=>{ring(cx,cz,cx+3,cz+3,2,13,3);box(cx,8,cz,cx+3,8,cz+3,2);box(cx+1,2,cz,cx+2,4,cz,0)});
 const coreCount={5:0,6:0};for(let i=0;i<vox.length;i++)if(vox[i]>=5)coreCount[vox[i]]++;
 const coreMax={5:coreCount[5],6:coreCount[6]};
 let dirty=true;
 function destroy(x,y,z,power){
   if(!inb(x,y,z)||y<1)return false;const t=vox[I(x,y,z)];if(!t)return false;
   if(t==4)return false;if(power<2&&t>=5)return false;
-  vox[I(x,y,z)]=0;dirty=true;debris(x,y,z,t);if(t>=5){coreCount[t]--;hudCores()}return true}
+  vox[I(x,y,z)]=0;dirty=true;colDirty=true;debris(x,y,z,t);if(t>=5){coreCount[t]--;hudCores()}return true}
 function setBlock(x,y,z,t){if(inb(x,y,z)){vox[I(x,y,z)]=t;dirty=true}}
 
 // ---------- three ----------
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 document.body.prepend(renderer.domElement);
-const scene=new THREE.Scene();scene.background=new THREE.Color(0x9fd0ee);scene.fog=new THREE.Fog(0x9fd0ee,45,120);
+const scene=new THREE.Scene();(()=>{const c=document.createElement('canvas');c.width=2;c.height=256;const g=c.getContext('2d'),gr=g.createLinearGradient(0,0,0,256);gr.addColorStop(0,'#3f86d6');gr.addColorStop(1,'#bfe3f5');g.fillStyle=gr;g.fillRect(0,0,2,256);scene.background=new THREE.CanvasTexture(c)})();scene.fog=new THREE.Fog(0x9fd0ee,45,120);
 const cam=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.05,200);cam.rotation.order='YXZ';scene.add(cam);const vmod=new THREE.Mesh(new THREE.BoxGeometry(.09,.12,.55),new THREE.MeshLambertMaterial({color:0x333840}));vmod.position.set(.24,-.22,-.5);cam.add(vmod);
 scene.add(new THREE.HemisphereLight(0xffffff,0x556655,.75));
 const sun=new THREE.DirectionalLight(0xfff2d6,.75);sun.position.set(80,95,15);sun.target.position.set(32,0,32);scene.add(sun,sun.target);
@@ -100,6 +101,19 @@ const DN=600,dm=new THREE.InstancedMesh(new THREE.BoxGeometry(.28,.28,.28),new T
 dm.frustumCulled=false;dm.castShadow=true;scene.add(dm);
 for(let i=0;i<DN;i++){deb.push({p:new THREE.Vector3(),v:new THREE.Vector3(),l:0});dm.setMatrixAt(i,dz);dm.setColorAt(i,cc.setHex(0xffffff))}
 function debris(x,y,z,t){if(Math.random()>.55)return;dI=(dI+1)%DN;const q=deb[dI];q.p.set(x+.5,y+.5,z+.5);q.v.set((Math.random()-.5)*10,Math.random()*8+2,(Math.random()-.5)*10);q.l=1.8;dm.setColorAt(dI,cc.setHex(COL[t]).multiplyScalar(.9))}
+const N6=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]],seen=new Uint8Array(W*H*D),qu=new Int32Array(W*H*D),FN=2500,fall=[];let colT=0,colDirty=false;
+const fm=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshLambertMaterial({map:mesh.material.map}),FN);fm.frustumCulled=false;fm.castShadow=true;fm.count=0;scene.add(fm);
+function collapse(){seen.fill(0);let h=0,t=0;
+  for(let y=0;y<2;y++)for(let z=0;z<D;z++)for(let x=0;x<W;x++){const i=I(x,y,z);if(vox[i]){seen[i]=1;qu[t++]=i}}
+  while(h<t){const i=qu[h++],x=i%W,z=((i/W)|0)%D,y=(i/(W*D))|0;
+    for(const[dx,dy,dz]of N6){const nx=x+dx,ny=y+dy,nz=z+dz;if(nx<0||nx>=W||nz<0||nz>=D||ny<0||ny>=H)continue;const j=I(nx,ny,nz);if(vox[j]&&!seen[j]){seen[j]=1;qu[t++]=j}}}
+  let n=0;for(let y=2;y<H;y++)for(let z=0;z<D;z++)for(let x=0;x<W;x++){const i=I(x,y,z);if(vox[i]&&!seen[i]){const ty=vox[i];vox[i]=0;n++;if(fall.length<FN)fall.push({x:x+.5,y:y+.5,z:z+.5,v:0,t:ty});else debris(x,y,z,ty)}}
+  if(n){dirty=true;if(n>30){toast('Structure collapsing!');snd('boom');shake=Math.max(shake,1.5)}}}
+function fallTick(dt){
+  for(let i=fall.length-1;i>=0;i--){const q=fall[i];q.v+=24*dt;q.y-=q.v*dt;const cx=Math.floor(q.x),cz=Math.floor(q.z),by=Math.floor(q.y-.5);
+    if(get(cx,by,cz)){const ly=by+1;if(inb(cx,ly,cz)&&!get(cx,ly,cz)){setBlock(cx,ly,cz,q.t);if(q.v>8)debris(cx,ly,cz,q.t)}fall.splice(i,1);if(q.v>10)snd('pop',new THREE.Vector3(q.x,q.y,q.z))}}
+  fm.count=fall.length;for(let i=0;i<fall.length;i++){const q=fall[i];dmm.makeScale(1,1,1);dmm.setPosition(q.x,q.y,q.z);fm.setMatrixAt(i,dmm);fm.setColorAt(i,cc.setHex(COL[q.t]).multiplyScalar(.9))}
+  fm.instanceMatrix.needsUpdate=true;if(fm.instanceColor)fm.instanceColor.needsUpdate=true}
 function debTick(dt){for(let i=0;i<DN;i++){const q=deb[i];if(q.l<=0)continue;q.l-=dt;q.v.y-=22*dt;
   const nx=q.p.x+q.v.x*dt,ny=q.p.y+q.v.y*dt,nz=q.p.z+q.v.z*dt;
   if(get(Math.floor(nx),Math.floor(q.p.y),Math.floor(q.p.z)))q.v.x*=-.4;else q.p.x=nx;
@@ -111,7 +125,7 @@ function rebuild(){let n=0;
   for(let y=0;y<H;y++)for(let z=0;z<D;z++)for(let x=0;x<W;x++){const t=vox[I(x,y,z)];if(!t)continue;
     if(get(x+1,y,z)&&get(x-1,y,z)&&get(x,y+1,z)&&get(x,y-1,z)&&get(x,y,z+1)&&get(x,y,z-1))continue;
     if(n>=MAXI)break;m4.setPosition(x+.5,y+.5,z+.5);mesh.setMatrixAt(n,m4);
-    cc.setHex(COL[t]).multiplyScalar(.86+((x*7+y*13+z*29)%5)*.035);mesh.setColorAt(n,cc);n++}
+    {const a=(get(x+1,y,z)?1:0)+(get(x-1,y,z)?1:0)+(get(x,y,z+1)?1:0)+(get(x,y,z-1)?1:0);cc.setHex(COL[t]).multiplyScalar((.86+((x*7+y*13+z*29)%5)*.035)*(1-.05*a))}mesh.setColorAt(n,cc);n++}
   mesh.count=n;mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true}
 
 function cast(o,d,max){let x=Math.floor(o.x),y=Math.floor(o.y),z=Math.floor(o.z),px=x,py=y,pz=z,t=0;
@@ -165,26 +179,46 @@ function useStreak(){if(!P.ks.length||P.dead>0)return;const k=P.ks.shift();upK()
 // vehicles
 const VT={tank:{c:0x4a5d3a,sp:4.2,hp:300,cd:.9,r:2.5},jeep:{c:0x6b7a4a,sp:10,hp:120,cd:.12,r:0},heli:{c:0x555a66,sp:9,hp:150,cd:.5,r:2.2}};
 const vehs=[];
-function mkVeh(t,x,z){const T=VT[t],g=new THREE.Group(),m=new THREE.MeshLambertMaterial({color:T.c}),h=t=='heli';
-  const bd=new THREE.Mesh(new THREE.BoxGeometry(h?1.4:2,h?1.2:.9,3),m);bd.position.y=h?.9:.7;g.add(bd);
-  if(t=='tank'){const tw=new THREE.Mesh(new THREE.BoxGeometry(1.2,.6,1.2),m);tw.position.y=1.4;const br=new THREE.Mesh(new THREE.BoxGeometry(.25,.25,2.2),m);br.position.set(0,1.4,-1.3);g.add(tw,br)}
-  if(h){const rt=new THREE.Mesh(new THREE.BoxGeometry(5,.06,.3),new THREE.MeshLambertMaterial({color:0x222222}));rt.position.y=1.6;g.add(rt);g.rot=rt}
-  g.traverse(o=>o.castShadow=true);scene.add(g);const v={t,T,mesh:g,pos:new THREE.Vector3(x,2,z),vel:new THREE.Vector3(),hp:T.hp,dead:0,home:[x,z],yawM:Math.PI,rad:t=='tank'?.9:.8,ground:false};g.position.copy(v.pos);g.rotation.y=Math.PI;vehs.push(v)}
+function trk(v){const a=1.1,r=.35,c=.45,PL=4*a+2*Math.PI*r;
+  v.plates.forEach((arr,side)=>arr.forEach((m,i)=>{const d=(((i/arr.length+v.tp)%1)+1)%1*PL;let z,y;
+    if(d<2*a){z=a-d;y=c+r}else if(d<2*a+Math.PI*r){const th=(d-2*a)/r;z=-a-r*Math.sin(th);y=c+r*Math.cos(th)}
+    else if(d<4*a+Math.PI*r){z=-a+(d-2*a-Math.PI*r);y=c-r}else{const th=(d-4*a-Math.PI*r)/r;z=a+r*Math.sin(th);y=c-r*Math.cos(th)}
+    m.position.set(side?1.05:-1.05,y,z)}))}
+function mkVeh(t,x,z){const T=VT[t],g=new THREE.Group(),L=c=>new THREE.MeshLambertMaterial({color:c});
+  const B=(w,hh,d,c,px,py,pz,par)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,hh,d),L(c));m.position.set(px,py,pz);m.castShadow=true;(par||g).add(m);return m};
+  const v={t,T,mesh:g,pos:new THREE.Vector3(x,2,z),vel:new THREE.Vector3(),hp:T.hp,dead:0,home:[x,z],yawM:Math.PI,h:Math.PI,sp:0,tp:0,rad:t=='tank'?.9:.8,ground:false};
+  if(t=='tank'){B(1.6,.6,3.2,T.c,0,.8,0);B(.4,.6,2.7,0x30343a,-1.05,.45,0);B(.4,.6,2.7,0x30343a,1.05,.45,0);
+    v.plates=[[],[]];for(let q=0;q<2;q++)for(let i=0;i<16;i++)v.plates[q].push(B(.5,.1,.3,0x1c1c1c,0,0,0));
+    const tg=new THREE.Group();tg.position.y=1.3;g.add(tg);B(1.3,.55,1.5,0x55683f,0,.28,.1,tg);v.barrel=B(.25,.25,2.4,0x3b4a2c,0,.3,-1.4,tg);v.turret=tg;trk(v)}
+  else if(t=='jeep'){B(1.6,.5,3,T.c,0,.6,0);B(1.3,.5,1.2,0x3d4a2a,0,1.1,.4);B(1.4,.05,.1,0x222222,0,1.2,-.3);v.wheels=[];
+    for(const[wx,wz]of[[-.95,-1],[.95,-1],[-.95,1],[.95,1]]){const w=new THREE.Group();w.position.set(wx,.35,wz);const c=new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,.3,10),L(0x1c1c1c));c.rotation.z=Math.PI/2;c.castShadow=true;w.add(c);g.add(w);v.wheels.push(w)}}
+  else{B(1.4,1.2,3,T.c,0,.9,0);B(.2,.2,2.5,T.c,0,1,2.4);B(1.1,.7,.9,0x9fd0ee,0,1.1,-1.2);g.rot=B(5,.06,.3,0x222222,0,1.6,0)}
+  scene.add(g);g.position.copy(v.pos);g.rotation.y=Math.PI;vehs.push(v)}
 mkVeh('tank',26,8);mkVeh('jeep',38,6);mkVeh('heli',32,12);
-function leave(v){P.veh=null;v.vel.set(0,0,0);P.pos.copy(v.pos);P.pos.y+=.3;
+function leave(v){P.veh=null;v.vel.set(0,0,0);v.sp=0;engine(false,0);P.pos.copy(v.pos);P.pos.y+=.3;
   for(const[x,z]of[[2,0],[-2,0],[0,2],[0,-2]]){const t={pos:v.pos.clone().add(new THREE.Vector3(x,.3,z))};if(!solid(t)){P.pos.copy(t.pos);break}}P.vel.set(0,0,0)}
+let EN;function engine(on,sp){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)()}catch(e){return}
+  if(!EN){const o=AC.createOscillator(),g=AC.createGain(),fl3=AC.createBiquadFilter();o.type='sawtooth';fl3.type='lowpass';fl3.frequency.value=300;g.gain.value=0;o.connect(fl3);fl3.connect(g);g.connect(AC.destination);o.start();EN={o,g}}
+  EN.o.frequency.value=45+Math.abs(sp)*7;EN.g.gain.value=on?.07:0}
 function useVeh(){if(P.dead>0)return;if(P.veh)return leave(P.veh);let b=null,bd=4.5;
   for(const v of vehs)if(v.dead<=0){const d=v.pos.distanceTo(P.pos);if(d<bd){bd=d;b=v}}
   if(b){P.veh=b;toast('Driving '+b.t+' – E to exit')}else toast('Get closer to a vehicle (E)')}
-function drive(dt){const v=P.veh,T=v.T,f=(keys.KeyW?1:0)-(keys.KeyS?1:0),s=(keys.KeyD?1:0)-(keys.KeyA?1:0),sn=Math.sin(P.yaw),cs=Math.cos(P.yaw);
-  const mx=-sn*f+cs*s,mz=-cs*f-sn*s,l=Math.hypot(mx,mz)||1,m=(f||s)?1:0;v.vel.x=mx/l*T.sp*m;v.vel.z=mz/l*T.sp*m;
-  if(v.t=='heli'){v.vel.y=(keys.Space?6:0)-(keys.ShiftLeft?6:0);const o=v.pos.clone();v.pos.addScaledVector(v.vel,dt);
+function drive(dt){const v=P.veh,T=v.T,f=(keys.KeyW?1:0)-(keys.KeyS?1:0),s=(keys.KeyD?1:0)-(keys.KeyA?1:0);engine(true,v.t=='heli'?8:v.sp);
+  if(v.t=='heli'){const sn=Math.sin(P.yaw),cs=Math.cos(P.yaw),mx=-sn*f+cs*s,mz=-cs*f-sn*s,l=Math.hypot(mx,mz)||1,m=(f||s)?1:0,k=Math.min(1,2.5*dt),o=v.pos.clone();
+    v.vel.x+=(mx/l*T.sp*m-v.vel.x)*k;v.vel.z+=(mz/l*T.sp*m-v.vel.z)*k;v.vel.y+=((keys.Space?6:0)-(keys.ShiftLeft?6:0)-v.vel.y)*k;v.pos.addScaledVector(v.vel,dt);
     v.pos.x=Math.min(W-2,Math.max(2,v.pos.x));v.pos.z=Math.min(D-2,Math.max(2,v.pos.z));v.pos.y=Math.min(H-2,Math.max(2,v.pos.y));
-    if(get(Math.floor(v.pos.x),Math.floor(v.pos.y),Math.floor(v.pos.z))||get(Math.floor(v.pos.x),Math.floor(v.pos.y+1),Math.floor(v.pos.z)))v.pos.copy(o)}
-  else{move(v,dt);if(v.ground&&(v.bx||v.bz)){const u={pos:v.pos.clone().add(new THREE.Vector3(0,1.05,0)),rad:v.rad};if(!solid(u))v.vel.y=7.4}}
-  if(m)v.yawM=Math.atan2(-mx,-mz);P.pos.copy(v.pos);P.cd-=dt;if(mouse&&P.cd<=0)fire()}
-function vehTick(v,dt){if(v.dead>0){v.dead-=dt;if(v.dead<=0){v.hp=v.T.hp;v.pos.set(v.home[0],2,v.home[1]);v.vel.set(0,0,0);v.mesh.visible=true}return}
-  if(v!==P.veh&&v.t!='heli')move(v,dt);v.mesh.rotation.y=v.yawM;v.mesh.position.copy(v.pos);if(v.mesh.rot&&v===P.veh)v.mesh.rot.rotation.y+=dt*30}
+    if(get(Math.floor(v.pos.x),Math.floor(v.pos.y),Math.floor(v.pos.z))||get(Math.floor(v.pos.x),Math.floor(v.pos.y+1),Math.floor(v.pos.z)))v.pos.copy(o);if(m)v.yawM=Math.atan2(-mx,-mz)}
+  else{const tg=f*T.sp,ac=v.t=='tank'?7:16;v.sp+=Math.sign(tg-v.sp)*Math.min(Math.abs(tg-v.sp),ac*dt);if(!f)v.sp*=1-Math.min(1,2.5*dt);
+    v.h-=s*(v.t=='tank'?1.1:2.1*Math.min(1,Math.abs(v.sp)/4))*dt*(v.sp<-.5&&v.t!='tank'?-1:1);
+    v.vel.x=-Math.sin(v.h)*v.sp;v.vel.z=-Math.cos(v.h)*v.sp;move(v,dt);
+    if((v.bx||v.bz)&&v.ground){const u={pos:v.pos.clone().add(new THREE.Vector3(0,1.05,0)),rad:v.rad};if(!solid(u))v.vel.y=7.4;else v.sp*=.4}}
+  P.pos.copy(v.pos);P.cd-=dt;if(mouse&&P.cd<=0)fire()}
+function vehTick(v,dt){if(v.dead>0){v.dead-=dt;if(v.dead<=0){v.hp=v.T.hp;v.pos.set(v.home[0],2,v.home[1]);v.vel.set(0,0,0);v.sp=0;v.mesh.visible=true}return}
+  if(v!==P.veh&&v.t!='heli')move(v,dt);
+  v.mesh.rotation.y=v.t=='heli'?v.yawM:v.h;v.mesh.position.copy(v.pos);
+  if(v.t=='tank'){v.tp+=v.sp*dt/6.6;trk(v);if(v===P.veh){v.turret.rotation.y=P.yaw-v.h;v.barrel.rotation.x=P.pitch*.5}}
+  if(v.wheels)v.wheels.forEach(w=>w.rotation.x-=v.sp*dt/.35);
+  if(v.mesh.rot&&v===P.veh)v.mesh.rot.rotation.y+=dt*30}
 const flashes=[];let shake=0;
 let AC;const SD={shot:[.09,1800,.35],boom:[.7,500,1],hit:[.06,2500,.4],pop:[.05,900,.3],hurt:[.15,700,.5]};snd.t={};snd.n=0;
 function snd(k,p){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)()}catch(e){return}if(AC.state=='suspended')AC.resume();
@@ -201,7 +235,7 @@ function blast(p,r,dmg,ns){snd('boom',p);shake=Math.max(shake,2.5/(1+cam.positio
   if(dmg){for(const b of bots){if(b.dead>0)continue;const d=b.pos.distanceTo(p);if(d<r+2)hurtBot(b,110*(1-d/(r+2)),true)}
     const d=P.pos.distanceTo(p);if(!ns&&d<r+2)hurtPlayer(45*(1-d/(r+2)))}
   const s=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),new THREE.MeshBasicMaterial({color:0xffa030,transparent:true,opacity:.9}));
-  s.position.copy(p);s.userData={life:.3,r};scene.add(s);flashes.push(s)}
+  s.position.copy(p);s.userData={life:.3,L:.3,r};scene.add(s);flashes.push(s);for(let i=0;i<5;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(.6,8,6),new THREE.MeshBasicMaterial({color:0x555555,transparent:true,opacity:.55}));m.position.set(p.x+(Math.random()-.5)*r,p.y+(Math.random()-.5)*r*.6,p.z+(Math.random()-.5)*r);m.userData={life:1.2,L:1.2,r:r*.6,sm:1};scene.add(m);flashes.push(m)}}
 function tracer(a,b,color){snd('shot',a);const g=new THREE.BufferGeometry().setFromPoints([a,b]),l=new THREE.Line(g,new THREE.LineBasicMaterial({color}));
   scene.add(l);setTimeout(()=>{scene.remove(l);g.dispose()},60)}
 
@@ -290,14 +324,14 @@ function update(dt){
   if(P.veh){const dd=new THREE.Vector3(0,0,-1).applyQuaternion(cam.quaternion);cam.position.copy(P.veh.pos).add(new THREE.Vector3(0,3,0)).addScaledVector(dd,-7)}else cam.position.set(P.pos.x,P.pos.y+(P.dead>0?.4:1.6),P.pos.z);
   for(const v of vehs)vehTick(v,dt);
   for(const b of bots)botUpdate(b,dt);
-  for(let i=flashes.length-1;i>=0;i--){const s=flashes[i];s.userData.life-=dt;const k=1-s.userData.life/.3;
-    s.scale.setScalar(.5+k*s.userData.r*1.3);s.material.opacity=Math.max(0,.9*(1-k));
+  for(let i=flashes.length-1;i>=0;i--){const s=flashes[i];s.userData.life-=dt;const k=1-s.userData.life/s.userData.L;if(s.userData.sm)s.position.y+=dt*1.8;
+    s.scale.setScalar(.5+k*s.userData.r*1.3);s.material.opacity=Math.max(0,(s.userData.sm?.55:.9)*(1-k));
     if(s.userData.life<=0){scene.remove(s);s.geometry.dispose();s.material.dispose();flashes.splice(i,1)}}}
 
 let last=performance.now();
 function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/1000);last=now;
   if(active&&!over)update(dt);
-  debTick(dt);clouds.forEach(c=>c.position.x=(c.userData.x+now*.003)%150-40);
+  debTick(dt);fallTick(dt);colT+=dt;if(colDirty&&colT>.4){colDirty=false;colT=0;collapse()}clouds.forEach(c=>c.position.x=(c.userData.x+now*.003)%150-40);
   if(dirty){rebuild();dirty=false}
   if(!active){cam.position.set(32,22,-6);cam.rotation.set(-.35,Math.PI*0+0,0);cam.position.set(32+Math.sin(now/6000)*14,20,-4);cam.lookAt(32,2,32)}
   renderer.render(scene,cam)}
