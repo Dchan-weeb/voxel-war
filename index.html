@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Block Siege – Voxel War</title>
+<style>
+*{margin:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif;color:#fff}
+canvas{display:block}
+#hud div{position:fixed;pointer-events:none;text-shadow:0 1px 3px #000}
+#cross{left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff;opacity:.85}
+#cross:before{left:7px;top:0;width:2px;height:16px}#cross:after{top:7px;left:0;height:2px;width:16px}
+#cores{top:12px;left:50%;transform:translateX(-50%);display:flex;gap:18px;font-weight:700}
+.bar{width:150px;height:12px;background:#0006;border:1px solid #fff6;border-radius:6px;overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%}
+#hp{left:16px;bottom:16px;font-weight:700}
+#wep{right:16px;bottom:16px;display:flex;gap:8px}
+#wep span{padding:6px 10px;background:#0006;border:2px solid #fff3;border-radius:8px;font-size:14px}
+#wep span.on{border-color:#ffd54a;background:#ffd54a33}
+#msg{top:22%;left:50%;transform:translateX(-50%);font-size:22px;font-weight:700;opacity:0;transition:opacity .3s}
+#kills{top:12px;right:16px;font-weight:700}
+#flash{inset:0;background:#f00;opacity:0;transition:opacity .25s}
+#ov{position:fixed;inset:0;background:#000b;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;cursor:pointer;padding:20px}
+#ov h1{font-size:44px;letter-spacing:2px}
+#ov p{opacity:.85;max-width:520px;line-height:1.5}
+#ov b{color:#ffd54a}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="cross"></div>
+  <div id="cores">
+    <span>YOUR CORE<div class="bar" style="position:static"><i id="bc" style="background:#3a7bff;width:100%"></i></div></span>
+    <span>ENEMY CORE<div class="bar" style="position:static"><i id="rc" style="background:#ff4747;width:100%"></i></div></span>
+  </div>
+  <div id="kills">Kills: 0</div>
+  <div id="hp">HEALTH<div class="bar" style="position:static"><i id="hpb" style="background:#5fe36a;width:100%"></i></div></div>
+  <div id="wep"><span id="w0">1 Rifle</span><span id="w1">2 Rockets</span><span id="w2">3 Hammer</span></div>
+  <div id="msg"></div>
+  <div id="flash"></div>
+</div>
+<div id="ov">
+  <h1>BLOCK SIEGE</h1>
+  <p id="ovt">Break through the enemy walls and <b>destroy their red core</b> before they destroy yours. Everything is made of blocks – and nearly all of it can be blown up.</p>
+  <p><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump · <b>Mouse</b> aim · <b>Click</b> fire<br><b>1</b> Rifle (chips blocks) · <b>2</b> Rockets (big blasts, breaks cores) · <b>3</b> Hammer (builds steel cover)</p>
+  <p id="go"><b>Click to play</b></p>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ---------- world ----------
+const W=64,H=30,D=64,vox=new Uint8Array(W*H*D);
+const I=(x,y,z)=>x+W*(z+D*y);
+const inb=(x,y,z)=>x>=0&&x<W&&z>=0&&z<D&&y>=0&&y<H;
+function get(x,y,z){if(x<0||x>=W||z<0||z>=D||y<0)return 1;if(y>=H)return 0;return vox[I(x,y,z)]}
+const COL={1:0x4f8a3a,2:0x9a9a94,3:0xa8553a,4:0x5d6b78,5:0x2f6fe0,6:0xe03b3b};
+let seed=1337;const rnd=()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+function box(x0,y0,z0,x1,y1,z1,t){for(let y=y0;y<=y1;y++)for(let z=z0;z<=z1;z++)for(let x=x0;x<=x1;x++)if(inb(x,y,z))vox[I(x,y,z)]=t}
+function ring(x0,z0,x1,z1,y0,y1,t){box(x0,y0,z0,x1,y1,z0,t);box(x0,y0,z1,x1,y1,z1,t);box(x0,y0,z0,x0,y1,z1,t);box(x1,y0,z0,x1,y1,z1,t)}
+box(0,0,0,W-1,0,D-1,2);box(0,1,0,W-1,1,D-1,1);
+// bases
+ring(20,2,44,14,2,5,3);box(28,2,14,36,5,14,0);box(31,2,8,33,4,10,5);
+ring(20,49,44,61,2,5,3);box(28,2,49,36,5,49,0);box(31,2,54,33,4,56,6);
+// mounds
+for(let i=0;i<7;i++){const cx=6+rnd()*52|0,cz=18+rnd()*28|0;for(let h=0;h<3;h++){const r=4-h;box(cx-r,2+h,cz-r,cx+r,2+h,cz+r,1)}}
+// bunkers & cover
+for(let i=0;i<9;i++){const cx=5+rnd()*50|0,cz=19+rnd()*24|0;ring(cx,cz,cx+4,cz+4,2,4,i%2?2:3);box(cx+2,2,cz,cx+2,3,cz,0);box(cx+2,2,cz+4,cx+2,3,cz+4,0);if(i%3==0)box(cx,5,cz,cx+4,5,cz+4,3)}
+for(let i=0;i<8;i++){const cx=4+rnd()*50|0,cz=18+rnd()*26|0;box(cx,2,cz,cx+(rnd()<.5?6:1),3,cz+(rnd()<.5?1:6),2)}
+const coreCount={5:0,6:0};for(let i=0;i<vox.length;i++)if(vox[i]>=5)coreCount[vox[i]]++;
+const coreMax={5:coreCount[5],6:coreCount[6]};
+let dirty=true;
+function destroy(x,y,z,power){
+  if(!inb(x,y,z)||y<1)return false;const t=vox[I(x,y,z)];if(!t)return false;
+  if(t==4)return false;if(power<2&&t>=5)return false;
+  vox[I(x,y,z)]=0;dirty=true;if(t>=5){coreCount[t]--;hudCores()}return true}
+function setBlock(x,y,z,t){if(inb(x,y,z)){vox[I(x,y,z)]=t;dirty=true}}
+
+// ---------- three ----------
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+document.body.prepend(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x9fd0ee);scene.fog=new THREE.Fog(0x9fd0ee,45,120);
+const cam=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.05,200);cam.rotation.order='YXZ';scene.add(cam);
+scene.add(new THREE.HemisphereLight(0xffffff,0x556655,.75));
+const sun=new THREE.DirectionalLight(0xffffff,.6);sun.position.set(30,60,20);scene.add(sun);
+addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()});
+const MAXI=70000,mesh=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshLambertMaterial(),MAXI);
+mesh.frustumCulled=false;scene.add(mesh);
+const m4=new THREE.Matrix4(),cc=new THREE.Color();
+function rebuild(){let n=0;
+  for(let y=0;y<H;y++)for(let z=0;z<D;z++)for(let x=0;x<W;x++){const t=vox[I(x,y,z)];if(!t)continue;
+    if(get(x+1,y,z)&&get(x-1,y,z)&&get(x,y+1,z)&&get(x,y-1,z)&&get(x,y,z+1)&&get(x,y,z-1))continue;
+    if(n>=MAXI)break;m4.setPosition(x+.5,y+.5,z+.5);mesh.setMatrixAt(n,m4);
+    cc.setHex(COL[t]).multiplyScalar(.86+((x*7+y*13+z*29)%5)*.035);mesh.setColorAt(n,cc);n++}
+  mesh.count=n;mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true}
+
+function cast(o,d,max){let x=Math.floor(o.x),y=Math.floor(o.y),z=Math.floor(o.z),px=x,py=y,pz=z,t=0;
+  const sx=Math.sign(d.x),sy=Math.sign(d.y),sz=Math.sign(d.z);
+  const dX=d.x?Math.abs(1/d.x):Infinity,dY=d.y?Math.abs(1/d.y):Infinity,dZ=d.z?Math.abs(1/d.z):Infinity;
+  let tx=d.x>0?(x+1-o.x)*dX:d.x<0?(o.x-x)*dX:Infinity,ty=d.y>0?(y+1-o.y)*dY:d.y<0?(o.y-y)*dY:Infinity,tz=d.z>0?(z+1-o.z)*dZ:d.z<0?(o.z-z)*dZ:Infinity;
+  while(t<=max){if(get(x,y,z))return{x,y,z,px,py,pz,t};px=x;py=y;pz=z;
+    if(tx<ty&&tx<tz){x+=sx;t=tx;tx+=dX}else if(ty<tz){y+=sy;t=ty;ty+=dY}else{z+=sz;t=tz;tz+=dZ}}
+  return null}
+function raySphere(o,d,cx,cy,cz,r){const ox=cx-o.x,oy=cy-o.y,oz=cz-o.z,tca=ox*d.x+oy*d.y+oz*d.z;if(tca<0)return null;
+  const d2=ox*ox+oy*oy+oz*oz-tca*tca;if(d2>r*r)return null;return tca-Math.sqrt(r*r-d2)}
+
+// ---------- bodies ----------
+function solid(b){const r=.3;for(const dx of[-r,r])for(const dz of[-r,r])for(const dy of[.05,.9,1.6])
+  if(get(Math.floor(b.pos.x+dx),Math.floor(b.pos.y+dy),Math.floor(b.pos.z+dz)))return true;return false}
+function move(b,dt){b.bx=b.bz=false;
+  b.pos.x+=b.vel.x*dt;if(solid(b)){b.pos.x-=b.vel.x*dt;b.bx=true}
+  b.pos.z+=b.vel.z*dt;if(solid(b)){b.pos.z-=b.vel.z*dt;b.bz=true}
+  b.vel.y-=22*dt;b.pos.y+=b.vel.y*dt;b.ground=false;
+  if(solid(b)){if(b.vel.y<0)b.ground=true;b.pos.y-=b.vel.y*dt;b.vel.y=0}
+  if(b.pos.y<-5){b.pos.y=8}}
+
+const P={pos:new THREE.Vector3(32.5,2,5.5),vel:new THREE.Vector3(),yaw:Math.PI,pitch:0,hp:100,dead:0,w:0,cd:0,kills:0};
+const bots=[];
+const botGeo=[new THREE.BoxGeometry(.6,1,.4),new THREE.BoxGeometry(.4,.4,.4),new THREE.BoxGeometry(.1,.1,.6)];
+function spawnPos(team){return team==0?new THREE.Vector3(24+rnd()*16,2,4+rnd()*3):new THREE.Vector3(24+rnd()*16,2,57+rnd()*2)}
+for(let i=0;i<24;i++){const team=i%2,g=new THREE.Group(),c=team?0xe04040:0x3a6df0,mt=new THREE.MeshLambertMaterial({color:c});
+  const bd=new THREE.Mesh(botGeo[0],mt);bd.position.y=.75;const hd=new THREE.Mesh(botGeo[1],new THREE.MeshLambertMaterial({color:0xe8c9a0}));hd.position.y=1.45;
+  const gn=new THREE.Mesh(botGeo[2],new THREE.MeshLambertMaterial({color:0x222222}));gn.position.set(.3,1,.3);g.add(bd,hd,gn);scene.add(g);
+  bots.push({team,mesh:g,pos:spawnPos(team),vel:new THREE.Vector3(),hp:60,dead:0,cd:rnd()*2,wcd:3+rnd()*5,ground:false})}
+
+function hurtPlayer(d){if(P.dead>0)return;P.hp-=d;fl.style.opacity=.45;setTimeout(()=>fl.style.opacity=0,120);hudHP();
+  if(P.hp<=0){P.dead=3;toast('You were eliminated')}}
+function hurtBot(b,d,byP){b.hp-=d;if(b.hp<=0&&b.dead<=0){b.dead=6;b.mesh.visible=false;if(byP){P.kills++;kEl.textContent='Kills: '+P.kills}}}
+const flashes=[];
+function blast(p,r,dmg){
+  const x0=Math.floor(p.x),y0=Math.floor(p.y),z0=Math.floor(p.z),R=Math.ceil(r);
+  for(let y=-R;y<=R;y++)for(let z=-R;z<=R;z++)for(let x=-R;x<=R;x++){
+    if(x*x+y*y+z*z<=r*r+.5)destroy(x0+x,y0+y,z0+z,2)}
+  if(dmg){for(const b of bots){if(b.dead>0)continue;const d=b.pos.distanceTo(p);if(d<r+2)hurtBot(b,110*(1-d/(r+2)),true)}
+    const d=P.pos.distanceTo(p);if(d<r+2)hurtPlayer(45*(1-d/(r+2)))}
+  const s=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),new THREE.MeshBasicMaterial({color:0xffa030,transparent:true,opacity:.9}));
+  s.position.copy(p);s.userData={life:.3,r};scene.add(s);flashes.push(s)}
+function tracer(a,b,color){const g=new THREE.BufferGeometry().setFromPoints([a,b]),l=new THREE.Line(g,new THREE.LineBasicMaterial({color}));
+  scene.add(l);setTimeout(()=>{scene.remove(l);g.dispose()},60)}
+
+// ---------- bots ----------
+function botUpdate(b,dt){
+  if(b.dead>0){b.dead-=dt;if(b.dead<=0){b.hp=60;b.pos.copy(spawnPos(b.team));b.vel.set(0,0,0);b.mesh.visible=true}return}
+  let tgt=null,bd=26;
+  for(const o of bots)if(o.team!==b.team&&o.dead<=0){const d=o.pos.distanceTo(b.pos);if(d<bd){bd=d;tgt=o}}
+  if(b.team==1&&P.dead<=0){const d=P.pos.distanceTo(b.pos);if(d<bd){bd=d;tgt=P}}
+  const core=b.team==0?new THREE.Vector3(32.5,2.5,55):new THREE.Vector3(32.5,2.5,9);
+  const goal=tgt&&bd<26?tgt.pos:core;
+  let dx=goal.x-b.pos.x,dz=goal.z-b.pos.z;const dist=Math.hypot(dx,dz)||1;dx/=dist;dz/=dist;
+  const hold=tgt&&bd<9||(!tgt&&dist<8);const sp=hold?0:3.3;
+  b.vel.x=dx*sp;b.vel.z=dz*sp;b.mesh.rotation.y=Math.atan2(dx,dz);
+  b.cd-=dt;b.wcd-=dt;
+  move(b,dt);
+  if(b.ground&&(b.bx||b.bz)){
+    const up={pos:b.pos.clone().add(new THREE.Vector3(0,1.05,0))};up.pos.x+=dx*.4;up.pos.z+=dz*.4;
+    if(!solid(up))b.vel.y=7.4;
+    else if(b.wcd<=0){b.wcd=2.5;const h=cast(new THREE.Vector3(b.pos.x,b.pos.y+1,b.pos.z),new THREE.Vector3(dx,0,dz),3);
+      if(h)blast(new THREE.Vector3(h.x+.5,h.y+.5,h.z+.5),1.5,false)}}
+  if(!tgt&&dist<14&&b.wcd<=0){b.wcd=9;blast(new THREE.Vector3(core.x+(rnd()-.5)*2,core.y,core.z+(rnd()-.5)*2),1.6,false)}
+  if(tgt&&b.cd<=0&&bd<24){
+    const o=new THREE.Vector3(b.pos.x,b.pos.y+1.2,b.pos.z),e=new THREE.Vector3(tgt.pos.x,tgt.pos.y+1,tgt.pos.z),d=e.clone().sub(o),L=d.length();d.normalize();
+    const h=cast(o,d,L);b.cd=.6+rnd()*.5;
+    if(!h||h.t>L-.5){tracer(o,e,b.team?0xff7070:0x70a0ff);
+      if(tgt===P){if(rnd()<.4)hurtPlayer(7)}else if(rnd()<.55)hurtBot(tgt,18,false)}}
+  b.mesh.position.copy(b.pos)}
+
+// ---------- player ----------
+const keys={};let mouse=false,active=false,over=false;
+const ov=document.getElementById('ov'),fl=document.getElementById('flash'),kEl=document.getElementById('kills'),msg=document.getElementById('msg');
+function toast(t){msg.textContent=t;msg.style.opacity=1;clearTimeout(toast.t);toast.t=setTimeout(()=>msg.style.opacity=0,1800)}
+function hudHP(){document.getElementById('hpb').style.width=Math.max(0,P.hp)+'%'}
+function hudCores(){document.getElementById('bc').style.width=100*coreCount[5]/coreMax[5]+'%';document.getElementById('rc').style.width=100*coreCount[6]/coreMax[6]+'%';
+  if(coreCount[6]<=0)end('VICTORY! The enemy core is destroyed.');else if(coreCount[5]<=0)end('DEFEAT – your core was destroyed.')}
+function end(t){over=true;document.exitPointerLock();document.getElementById('ovt').innerHTML='<b style="font-size:26px">'+t+'</b><br>Kills: '+P.kills;
+  document.getElementById('go').innerHTML='<b>Click to play again</b>';ov.style.display='flex';ov.onclick=()=>location.reload()}
+function selW(i){P.w=i;for(let k=0;k<3;k++)document.getElementById('w'+k).className=k==i?'on':''}selW(0);
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code=='Digit1')selW(0);if(e.code=='Digit2')selW(1);if(e.code=='Digit3')selW(2)});
+addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('wheel',e=>selW((P.w+(e.deltaY>0?1:2))%3));
+addEventListener('mousedown',()=>mouse=true);addEventListener('mouseup',()=>mouse=false);
+addEventListener('mousemove',e=>{if(!active)return;P.yaw-=e.movementX*.0022;P.pitch=Math.max(-1.55,Math.min(1.55,P.pitch-e.movementY*.0022))});
+ov.onclick=()=>renderer.domElement.requestPointerLock();
+document.addEventListener('pointerlockchange',()=>{active=document.pointerLockElement===renderer.domElement;if(!over)ov.style.display=active?'none':'flex'});
+
+function fire(){
+  const o=cam.position.clone(),d=new THREE.Vector3(0,0,-1).applyQuaternion(cam.quaternion);
+  if(P.w==0){P.cd=.11;d.x+=(rnd()-.5)*.012;d.y+=(rnd()-.5)*.012;d.normalize();
+    const r=cast(o,d,90);let bt=r?r.t:90,hb=null,ht=1e9;
+    for(const b of bots)if(b.team==1&&b.dead<=0){const t=raySphere(o,d,b.pos.x,b.pos.y+.9,b.pos.z,.6);if(t!==null&&t<ht){ht=t;hb=b}}
+    if(hb&&ht<bt)hurtBot(hb,26,true);else if(r)destroy(r.x,r.y,r.z,1);
+    tracer(o.clone().add(d.clone().multiplyScalar(.8)).add(new THREE.Vector3(0,-.15,0)),o.clone().add(d.clone().multiplyScalar(Math.min(bt,hb?ht:bt))),0xffe080)}
+  else if(P.w==1){P.cd=1.1;const r=cast(o,d,80);let t=r?r.t:80;
+    for(const b of bots)if(b.team==1&&b.dead<=0){const s=raySphere(o,d,b.pos.x,b.pos.y+.9,b.pos.z,.6);if(s!==null&&s<t)t=s}
+    blast(o.clone().add(d.multiplyScalar(Math.max(0,t-.3))),3,true)}
+  else{P.cd=.15;const r=cast(o,d,6);
+    if(r&&inb(r.px,r.py,r.pz)&&!get(r.px,r.py,r.pz)){
+      const hitP=Math.abs(r.px+.5-P.pos.x)<.85&&Math.abs(r.pz+.5-P.pos.z)<.85&&r.py+1>P.pos.y&&r.py<P.pos.y+1.8;
+      if(!hitP)setBlock(r.px,r.py,r.pz,4)}}}
+
+function update(dt){
+  if(P.dead>0){P.dead-=dt;if(P.dead<=0){P.hp=100;P.pos.set(32.5,2,5.5);P.vel.set(0,0,0);hudHP()}}
+  else{
+    const f=(keys.KeyW?1:0)-(keys.KeyS?1:0),s=(keys.KeyD?1:0)-(keys.KeyA?1:0),sp=keys.ShiftLeft?8:5.5;
+    const sn=Math.sin(P.yaw),cs=Math.cos(P.yaw);let mx=-sn*f+cs*s,mz=-cs*f-sn*s;const l=Math.hypot(mx,mz)||1;
+    P.vel.x=mx/l*sp*(f||s?1:0);P.vel.z=mz/l*sp*(f||s?1:0);
+    if(keys.Space&&P.ground)P.vel.y=8.2;
+    move(P,dt);P.cd-=dt;if(mouse&&P.cd<=0)fire()}
+  cam.position.set(P.pos.x,P.pos.y+(P.dead>0?.4:1.6),P.pos.z);cam.rotation.set(P.pitch,P.yaw,P.dead>0?.8:0);
+  for(const b of bots)botUpdate(b,dt);
+  for(let i=flashes.length-1;i>=0;i--){const s=flashes[i];s.userData.life-=dt;const k=1-s.userData.life/.3;
+    s.scale.setScalar(.5+k*s.userData.r*1.3);s.material.opacity=Math.max(0,.9*(1-k));
+    if(s.userData.life<=0){scene.remove(s);s.geometry.dispose();s.material.dispose();flashes.splice(i,1)}}}
+
+let last=performance.now();
+function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/1000);last=now;
+  if(active&&!over)update(dt);
+  if(dirty){rebuild();dirty=false}
+  if(!active){cam.position.set(32,22,-6);cam.rotation.set(-.35,Math.PI*0+0,0);cam.position.set(32+Math.sin(now/6000)*14,20,-4);cam.lookAt(32,2,32)}
+  renderer.render(scene,cam)}
+cam.position.set(32,20,-4);rebuild();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
