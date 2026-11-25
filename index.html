@@ -75,20 +75,38 @@ let dirty=true;
 function destroy(x,y,z,power){
   if(!inb(x,y,z)||y<1)return false;const t=vox[I(x,y,z)];if(!t)return false;
   if(t==4)return false;if(power<2&&t>=5)return false;
-  vox[I(x,y,z)]=0;dirty=true;if(t>=5){coreCount[t]--;hudCores()}return true}
+  vox[I(x,y,z)]=0;dirty=true;debris(x,y,z,t);if(t>=5){coreCount[t]--;hudCores()}return true}
 function setBlock(x,y,z,t){if(inb(x,y,z)){vox[I(x,y,z)]=t;dirty=true}}
 
 // ---------- three ----------
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 document.body.prepend(renderer.domElement);
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x9fd0ee);scene.fog=new THREE.Fog(0x9fd0ee,45,120);
-const cam=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.05,200);cam.rotation.order='YXZ';scene.add(cam);
+const cam=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.05,200);cam.rotation.order='YXZ';scene.add(cam);const vmod=new THREE.Mesh(new THREE.BoxGeometry(.09,.12,.55),new THREE.MeshLambertMaterial({color:0x333840}));vmod.position.set(.24,-.22,-.5);cam.add(vmod);
 scene.add(new THREE.HemisphereLight(0xffffff,0x556655,.75));
-const sun=new THREE.DirectionalLight(0xffffff,.6);sun.position.set(30,60,20);scene.add(sun);
+const sun=new THREE.DirectionalLight(0xfff2d6,.75);sun.position.set(80,95,15);sun.target.position.set(32,0,32);scene.add(sun,sun.target);
+sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);const shc=sun.shadow.camera;shc.left=shc.bottom=-52;shc.right=shc.top=52;shc.near=1;shc.far=220;sun.shadow.bias=-.0006;sun.shadow.normalBias=.05;
+const clouds=[];for(let i=0;i<10;i++){const c=new THREE.Mesh(new THREE.BoxGeometry(8+Math.random()*8,1.5,4+Math.random()*4),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.8,fog:false}));
+  c.userData.x=Math.random()*140;c.position.set(0,40+Math.random()*8,Math.random()*90-10);scene.add(c);clouds.push(c)}
 addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()});
-const MAXI=70000,mesh=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshLambertMaterial(),MAXI);
+function blockTex(){const c=document.createElement('canvas');c.width=c.height=16;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,16,16);
+  for(let i=0;i<40;i++){g.fillStyle='rgba(0,0,0,'+Math.random()*.09+')';g.fillRect(Math.random()*16|0,Math.random()*16|0,2,2)}
+  g.strokeStyle='rgba(0,0,0,.22)';g.lineWidth=2;g.strokeRect(0,0,16,16);const t=new THREE.CanvasTexture(c);t.magFilter=THREE.NearestFilter;return t}
+const MAXI=70000,mesh=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshLambertMaterial({map:blockTex()}),MAXI);mesh.castShadow=mesh.receiveShadow=true;
 mesh.frustumCulled=false;scene.add(mesh);
 const m4=new THREE.Matrix4(),cc=new THREE.Color();
+const DN=600,dm=new THREE.InstancedMesh(new THREE.BoxGeometry(.28,.28,.28),new THREE.MeshLambertMaterial(),DN),deb=[],dmm=new THREE.Matrix4(),dz=new THREE.Matrix4().makeScale(0,0,0);let dI=0;
+dm.frustumCulled=false;dm.castShadow=true;scene.add(dm);
+for(let i=0;i<DN;i++){deb.push({p:new THREE.Vector3(),v:new THREE.Vector3(),l:0});dm.setMatrixAt(i,dz);dm.setColorAt(i,cc.setHex(0xffffff))}
+function debris(x,y,z,t){if(Math.random()>.55)return;dI=(dI+1)%DN;const q=deb[dI];q.p.set(x+.5,y+.5,z+.5);q.v.set((Math.random()-.5)*10,Math.random()*8+2,(Math.random()-.5)*10);q.l=1.8;dm.setColorAt(dI,cc.setHex(COL[t]).multiplyScalar(.9))}
+function debTick(dt){for(let i=0;i<DN;i++){const q=deb[i];if(q.l<=0)continue;q.l-=dt;q.v.y-=22*dt;
+  const nx=q.p.x+q.v.x*dt,ny=q.p.y+q.v.y*dt,nz=q.p.z+q.v.z*dt;
+  if(get(Math.floor(nx),Math.floor(q.p.y),Math.floor(q.p.z)))q.v.x*=-.4;else q.p.x=nx;
+  if(get(Math.floor(q.p.x),Math.floor(q.p.y),Math.floor(nz)))q.v.z*=-.4;else q.p.z=nz;
+  if(get(Math.floor(q.p.x),Math.floor(ny),Math.floor(q.p.z))){q.v.y*=-.35;q.v.x*=.8;q.v.z*=.8}else q.p.y=ny;
+  if(q.l<=0)dm.setMatrixAt(i,dz);else{const k=Math.min(1,q.l*2);dmm.makeScale(k,k,k);dmm.setPosition(q.p);dm.setMatrixAt(i,dmm)}}
+  dm.instanceMatrix.needsUpdate=true;if(dm.instanceColor)dm.instanceColor.needsUpdate=true}
 function rebuild(){let n=0;
   for(let y=0;y<H;y++)for(let z=0;z<D;z++)for(let x=0;x<W;x++){const t=vox[I(x,y,z)];if(!t)continue;
     if(get(x+1,y,z)&&get(x-1,y,z)&&get(x,y+1,z)&&get(x,y-1,z)&&get(x,y,z+1)&&get(x,y,z-1))continue;
@@ -121,8 +139,11 @@ const bots=[];
 const botGeo=[new THREE.BoxGeometry(.6,1,.4),new THREE.BoxGeometry(.4,.4,.4),new THREE.BoxGeometry(.1,.1,.6)];
 function spawnPos(team){return team==0?new THREE.Vector3(24+rnd()*16,2,4+rnd()*3):new THREE.Vector3(24+rnd()*16,2,57+rnd()*2)}
 for(let i=0;i<24;i++){const team=i%2,g=new THREE.Group(),c=team?0xe04040:0x3a6df0,mt=new THREE.MeshLambertMaterial({color:c});
-  const bd=new THREE.Mesh(botGeo[0],mt);bd.position.y=.75;const hd=new THREE.Mesh(botGeo[1],new THREE.MeshLambertMaterial({color:0xe8c9a0}));hd.position.y=1.45;
-  const gn=new THREE.Mesh(botGeo[2],new THREE.MeshLambertMaterial({color:0x222222}));gn.position.set(.3,1,.3);g.add(bd,hd,gn);scene.add(g);
+  const mk=(w,h,d,col,x,y,z)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshLambertMaterial({color:col}));m.position.set(x,y,z);m.castShadow=true;return m};
+  const limb=(w,h,x,y,col)=>{const p=new THREE.Group();p.position.set(x,y,0);p.add(mk(w,h,w,col,0,-h/2,0));return p};
+  const la=limb(.2,.6,-.4,1.4,c),ra=limb(.2,.6,.4,1.4,c),ll=limb(.25,.7,-.15,.7,0x2b2f36),rl=limb(.25,.7,.15,.7,0x2b2f36);ra.rotation.x=-1.3;la.rotation.x=-1.1;
+  g.add(mk(.6,.7,.35,c,0,1.05,0),mk(.36,.36,.36,0xe8c9a0,0,1.55,0),mk(.42,.2,.42,team?0x7a2020:0x203a7a,0,1.72,0),la,ra,ll,rl,mk(.1,.12,.7,0x222222,.4,1.1,.35));
+  g.userData.legs=[ll,rl];scene.add(g);
   bots.push({team,mesh:g,pos:spawnPos(team),vel:new THREE.Vector3(),hp:60,dead:0,cd:rnd()*2,wcd:3+rnd()*5,ground:false})}
 
 const score=[0,0];let xp=+localStorage.getItem('bsxp')||0;const lvl=()=>1+Math.floor(xp/300);
@@ -131,7 +152,7 @@ function addXP(n){const l=lvl();xp+=n;try{localStorage.setItem('bsxp',xp)}catch(
 function upK(){kEl.textContent='Kills: '+P.kills+' · Streak '+P.st+(P.ks.length?' · [Q] '+P.ks[0]:'')}
 function hudScore(){if(MODE!='tdm')return;document.getElementById('sc').textContent='BLUE '+score[0]+'  —  RED '+score[1]+'  (first to 25)';
   if(score[0]>=25)end('VICTORY! Your team reached 25 kills.');else if(score[1]>=25)end('DEFEAT – the enemy reached 25 kills.')}
-function hurtPlayer(d){if(P.dead>0)return;fl.style.opacity=.45;setTimeout(()=>fl.style.opacity=0,120);
+function hurtPlayer(d){if(P.dead>0)return;snd('hurt');fl.style.opacity=.45;setTimeout(()=>fl.style.opacity=0,120);
   if(P.veh){const v=P.veh;v.hp-=d*.5;if(v.hp<=0){leave(v);v.mesh.visible=false;v.dead=20;blast(v.pos.clone(),2.5,false);toast('Vehicle destroyed')}return}
   P.hp-=d;hudHP();
   if(P.hp<=0){P.dead=3;P.st=0;P.ks=[];score[1]++;toast('You were eliminated');upK();hudScore()}}
@@ -148,7 +169,7 @@ function mkVeh(t,x,z){const T=VT[t],g=new THREE.Group(),m=new THREE.MeshLambertM
   const bd=new THREE.Mesh(new THREE.BoxGeometry(h?1.4:2,h?1.2:.9,3),m);bd.position.y=h?.9:.7;g.add(bd);
   if(t=='tank'){const tw=new THREE.Mesh(new THREE.BoxGeometry(1.2,.6,1.2),m);tw.position.y=1.4;const br=new THREE.Mesh(new THREE.BoxGeometry(.25,.25,2.2),m);br.position.set(0,1.4,-1.3);g.add(tw,br)}
   if(h){const rt=new THREE.Mesh(new THREE.BoxGeometry(5,.06,.3),new THREE.MeshLambertMaterial({color:0x222222}));rt.position.y=1.6;g.add(rt);g.rot=rt}
-  scene.add(g);const v={t,T,mesh:g,pos:new THREE.Vector3(x,2,z),vel:new THREE.Vector3(),hp:T.hp,dead:0,home:[x,z],yawM:Math.PI,rad:t=='tank'?.9:.8,ground:false};g.position.copy(v.pos);g.rotation.y=Math.PI;vehs.push(v)}
+  g.traverse(o=>o.castShadow=true);scene.add(g);const v={t,T,mesh:g,pos:new THREE.Vector3(x,2,z),vel:new THREE.Vector3(),hp:T.hp,dead:0,home:[x,z],yawM:Math.PI,rad:t=='tank'?.9:.8,ground:false};g.position.copy(v.pos);g.rotation.y=Math.PI;vehs.push(v)}
 mkVeh('tank',26,8);mkVeh('jeep',38,6);mkVeh('heli',32,12);
 function leave(v){P.veh=null;v.vel.set(0,0,0);P.pos.copy(v.pos);P.pos.y+=.3;
   for(const[x,z]of[[2,0],[-2,0],[0,2],[0,-2]]){const t={pos:v.pos.clone().add(new THREE.Vector3(x,.3,z))};if(!solid(t)){P.pos.copy(t.pos);break}}P.vel.set(0,0,0)}
@@ -164,8 +185,16 @@ function drive(dt){const v=P.veh,T=v.T,f=(keys.KeyW?1:0)-(keys.KeyS?1:0),s=(keys
   if(m)v.yawM=Math.atan2(-mx,-mz);P.pos.copy(v.pos);P.cd-=dt;if(mouse&&P.cd<=0)fire()}
 function vehTick(v,dt){if(v.dead>0){v.dead-=dt;if(v.dead<=0){v.hp=v.T.hp;v.pos.set(v.home[0],2,v.home[1]);v.vel.set(0,0,0);v.mesh.visible=true}return}
   if(v!==P.veh&&v.t!='heli')move(v,dt);v.mesh.rotation.y=v.yawM;v.mesh.position.copy(v.pos);if(v.mesh.rot&&v===P.veh)v.mesh.rot.rotation.y+=dt*30}
-const flashes=[];
-function blast(p,r,dmg,ns){
+const flashes=[];let shake=0;
+let AC;const SD={shot:[.09,1800,.35],boom:[.7,500,1],hit:[.06,2500,.4],pop:[.05,900,.3],hurt:[.15,700,.5]};snd.t={};snd.n=0;
+function snd(k,p){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)()}catch(e){return}if(AC.state=='suspended')AC.resume();
+  const now=performance.now();if(now-(snd.t[k]||0)<(k=='shot'?35:60)||snd.n>14)return;snd.t[k]=now;
+  const g=p?1/(1+cam.position.distanceTo(p)*.09):1;if(g<.06)return;const[dur,fq,vol]=SD[k],t=AC.currentTime;
+  const b=AC.createBuffer(1,AC.sampleRate*dur|0,AC.sampleRate),d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,k=='boom'?1.5:3);
+  const s=AC.createBufferSource(),fl2=AC.createBiquadFilter(),v=AC.createGain();s.buffer=b;fl2.type=k=='boom'?'lowpass':'bandpass';fl2.frequency.value=fq;v.gain.value=g*vol;
+  s.connect(fl2);fl2.connect(v);v.connect(AC.destination);snd.n++;s.onended=()=>snd.n--;s.start(t);
+  if(k=='boom'){const o=AC.createOscillator(),og=AC.createGain();o.frequency.setValueAtTime(90,t);o.frequency.exponentialRampToValueAtTime(30,t+.5);og.gain.setValueAtTime(.8*g,t);og.gain.exponentialRampToValueAtTime(.001,t+.6);o.connect(og);og.connect(AC.destination);o.start(t);o.stop(t+.6)}}
+function blast(p,r,dmg,ns){snd('boom',p);shake=Math.max(shake,2.5/(1+cam.position.distanceTo(p)*.2));
   const x0=Math.floor(p.x),y0=Math.floor(p.y),z0=Math.floor(p.z),R=Math.ceil(r);
   for(let y=-R;y<=R;y++)for(let z=-R;z<=R;z++)for(let x=-R;x<=R;x++){
     if(x*x+y*y+z*z<=r*r+.5)destroy(x0+x,y0+y,z0+z,2)}
@@ -173,7 +202,7 @@ function blast(p,r,dmg,ns){
     const d=P.pos.distanceTo(p);if(!ns&&d<r+2)hurtPlayer(45*(1-d/(r+2)))}
   const s=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),new THREE.MeshBasicMaterial({color:0xffa030,transparent:true,opacity:.9}));
   s.position.copy(p);s.userData={life:.3,r};scene.add(s);flashes.push(s)}
-function tracer(a,b,color){const g=new THREE.BufferGeometry().setFromPoints([a,b]),l=new THREE.Line(g,new THREE.LineBasicMaterial({color}));
+function tracer(a,b,color){snd('shot',a);const g=new THREE.BufferGeometry().setFromPoints([a,b]),l=new THREE.Line(g,new THREE.LineBasicMaterial({color}));
   scene.add(l);setTimeout(()=>{scene.remove(l);g.dispose()},60)}
 
 // ---------- bots ----------
@@ -200,6 +229,7 @@ function botUpdate(b,dt){
     const h=cast(o,d,L);b.cd=.6+rnd()*.5;
     if(!h||h.t>L-.5){tracer(o,e,b.team?0xff7070:0x70a0ff);
       if(tgt===P){if(rnd()<.4)hurtPlayer(7)}else if(rnd()<.55)hurtBot(tgt,18,false)}}
+  const sw=Math.sin(performance.now()/110+b.team)*(sp?.7:0),lg=b.mesh.userData.legs;lg[0].rotation.x=sw;lg[1].rotation.x=-sw;
   b.mesh.position.copy(b.pos)}
 
 // ---------- player ----------
@@ -221,13 +251,13 @@ addEventListener('keyup',e=>keys[e.code]=false);
 addEventListener('wheel',e=>selW((P.w+(e.deltaY>0?1:2))%3));
 addEventListener('mousedown',()=>mouse=true);addEventListener('mouseup',()=>mouse=false);
 addEventListener('mousemove',e=>{if(!active)return;P.yaw-=e.movementX*.0022;P.pitch=Math.max(-1.55,Math.min(1.55,P.pitch-e.movementY*.0022))});
-ov.onclick=()=>renderer.domElement.requestPointerLock();
+ov.onclick=()=>{renderer.domElement.requestPointerLock();snd('pop')};
 document.addEventListener('pointerlockchange',()=>{active=document.pointerLockElement===renderer.domElement;if(!over)ov.style.display=active?'none':'flex'});
 
 function shoot(o,d0,dmg,sp,range){const d=d0.clone();d.x+=(Math.random()-.5)*sp;d.y+=(Math.random()-.5)*sp;d.z+=(Math.random()-.5)*sp;d.normalize();
   const r=cast(o,d,range);let bt=r?r.t:range,hb=null,ht=1e9;
   for(const b of bots)if(b.team==1&&b.dead<=0){const t=raySphere(o,d,b.pos.x,b.pos.y+.9,b.pos.z,.6);if(t!==null&&t<ht){ht=t;hb=b}}
-  const hit=hb&&ht<bt;if(hit)hurtBot(hb,dmg,true);else if(r)destroy(r.x,r.y,r.z,1);
+  const hit=hb&&ht<bt;P.rc=.1;if(hit){hurtBot(hb,dmg,true);snd('hit')}else if(r)destroy(r.x,r.y,r.z,1);
   tracer(o.clone().addScaledVector(d,.8).add(new THREE.Vector3(0,-.15,0)),o.clone().addScaledVector(d,hit?ht:bt),0xffe080)}
 function fire(){
   const o=cam.position.clone(),d=new THREE.Vector3(0,0,-1).applyQuaternion(cam.quaternion);
@@ -245,7 +275,7 @@ function fire(){
   else{P.cd=.15;const r=cast(o,d,6);
     if(r&&inb(r.px,r.py,r.pz)&&!get(r.px,r.py,r.pz)){
       const hitP=Math.abs(r.px+.5-P.pos.x)<.85&&Math.abs(r.pz+.5-P.pos.z)<.85&&r.py+1>P.pos.y&&r.py<P.pos.y+1.8;
-      if(!hitP)setBlock(r.px,r.py,r.pz,4)}}}
+      if(!hitP){setBlock(r.px,r.py,r.pz,4);snd('pop')}}}}
 
 function update(dt){
   if(P.dead>0){P.dead-=dt;if(P.dead<=0){P.hp=100;P.pos.set(32.5,2,5.5);P.vel.set(0,0,0);hudHP()}}
@@ -256,7 +286,7 @@ function update(dt){
     P.vel.x=mx/l*sp*(f||s?1:0);P.vel.z=mz/l*sp*(f||s?1:0);
     if(keys.Space&&P.ground)P.vel.y=8.2;
     move(P,dt);P.cd-=dt;if(mouse&&P.cd<=0)fire()}
-  cam.rotation.set(P.pitch,P.yaw,P.dead>0?.8:0);
+  cam.rotation.set(P.pitch+(Math.random()-.5)*shake*.02,P.yaw+(Math.random()-.5)*shake*.02,P.dead>0?.8:0);shake*=.92;P.rc=(P.rc||0)*.85;vmod.position.z=-.5+P.rc;vmod.visible=!P.veh&&P.dead<=0;
   if(P.veh){const dd=new THREE.Vector3(0,0,-1).applyQuaternion(cam.quaternion);cam.position.copy(P.veh.pos).add(new THREE.Vector3(0,3,0)).addScaledVector(dd,-7)}else cam.position.set(P.pos.x,P.pos.y+(P.dead>0?.4:1.6),P.pos.z);
   for(const v of vehs)vehTick(v,dt);
   for(const b of bots)botUpdate(b,dt);
@@ -267,6 +297,7 @@ function update(dt){
 let last=performance.now();
 function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/1000);last=now;
   if(active&&!over)update(dt);
+  debTick(dt);clouds.forEach(c=>c.position.x=(c.userData.x+now*.003)%150-40);
   if(dirty){rebuild();dirty=false}
   if(!active){cam.position.set(32,22,-6);cam.rotation.set(-.35,Math.PI*0+0,0);cam.position.set(32+Math.sin(now/6000)*14,20,-4);cam.lookAt(32,2,32)}
   renderer.render(scene,cam)}
